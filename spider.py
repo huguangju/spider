@@ -22,6 +22,13 @@ class Spider:
         self.downloadSuccess = False
         self.index_page = 'index.html'
 
+    # TODO 处理下面两个方法
+    def get_content(self, url):
+        response = urllib2.urlopen(url)
+        content = response.read().decode('utf-8')
+        response.close()
+        return content
+
     def getContent(self, url, save_path):
         self.base_url = url
 
@@ -30,18 +37,15 @@ class Spider:
             self.mkdir_p(save_path)
 
         urllib.urlretrieve(url, save_path + self.index_page, self.download_callbackfunc)
-
-        response = urllib2.urlopen(url)
-        content = response.read().decode('utf-8')
-        response.close()
-        return content
+        return self.get_content(url)
 
     def get_img_in_css(self, url):
         request = urllib2.Request(url)
         html = urllib2.urlopen(request).read().decode('utf-8')
 
         # background: url("../images/arrow.png") no-repeat scroll right 14px top 18px rgba(0, 0, 0, 0);
-        re_string = r'background.*url\("(.*)"\)'
+        #re_string = r'background.*url\("(.*)"\)'
+        re_string = r'url\("(.*)"\)'
         match = re.compile(re_string)
         img_links = re.findall(match, html)
         img_result = []
@@ -62,8 +66,9 @@ class Spider:
         links = soup.findAll('a')
         for link in links:
             try:
-                temp = link['src']
-                result.append(temp)
+                temp = link['href']
+                if not temp.startswith('#'): # 排除锚点
+                    result.append(temp)
             except KeyError:
                 pass # or some other fallback action
 
@@ -87,6 +92,14 @@ class Spider:
 
         #images
         links = soup.findAll('img')
+        for link in links:
+            try:
+                temp = link['src']
+                result.append(temp)
+            except KeyError:
+                pass # or some other fallback action
+
+        links = soup.findAll('frame')
         for link in links:
             try:
                 temp = link['src']
@@ -122,6 +135,9 @@ class Spider:
         if not os.path.exists(save_path):
             self.mkdir_p(save_path)
 
+        if self.base_url.endswith('index.html'):
+           self.base_url = self.base_url.replace('index.html', '')
+
         absolute_url = urlparse.urljoin(self.base_url, url)
         dirs = self.getdirc(save_path + url)
 
@@ -137,6 +153,14 @@ class Spider:
 
                     print 'downloading file:' + absolute_url
                     urllib.urlretrieve(absolute_url, save_path + url, self.download_callbackfunc)
+                    # TODO: 递归下载子html页面的资源
+
+                    content = self.get_content(self.base_url + url)
+                    urls = spider.getUrls(content)
+                    if len(urls) > 0:
+                        for url in {}.fromkeys(urls).keys():
+                            if url != '':
+                                self.download(self.base_url + url)
 
                     # 只有下载成功方能退出
                     if self.downloadSuccess:
@@ -170,15 +194,17 @@ class Spider:
 
 if __name__ == "__main__":
     spider = Spider()
-    base_url = 'http://foxythemes.net/cleanzone2/'
+    #base_url = 'http://infinite-woodland-5276.herokuapp.com/index.html'
+    base_url = 'http://feathersui.com/documentation/'
     save_path = "test/"
-    #content = spider.getContent(base_url, "test/");
+    content = spider.getContent(base_url, save_path);
     for href in {}.fromkeys(spider.getUrls(content)).keys():
         if not href.__contains__('googleapis'):
             spider.download(href, save_path)
+            print href
 
      # 单独下载css中的背景图
-    '''imgs = spider.get_img_in_css('http://foxythemes.net/cleanzone2/css/style.css')
+    '''imgs = spider.get_img_in_css('http://infinite-woodland-5276.herokuapp.com/assets/stylesheets/themes.min.css')
     for img in imgs:
         temp = img.replace(base_url, '')
         dirs = save_path + temp[:temp.rfind('/')]
